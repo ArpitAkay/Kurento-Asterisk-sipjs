@@ -28,11 +28,11 @@ var SIP = require('sip.js');
 var argv = minimist(process.argv.slice(2), {
   default: {
       as_uri: "https://localhost:8443/",
-      ws_uri: "ws://107.22.152.22:8111/kurento"
+      ws_uri: "ws://localhost:8888/kurento"
   }
 });
 
-const OVERLAY_URL = 'https://github.com/Kurento/kurento-tutorial-node/raw/master/kurento-magic-mirror/static/img/mario-wings.png';
+const OVERLAY_URL = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSh0iyhLaTrjKqyvoymc5_UUgSKFYCbyBgUMK9xHwNHrs44X97NvJsooGoKnk59DUurkX0&usqp=CAU';
 
 var options =
 {
@@ -51,7 +51,7 @@ var userRegistry = new UserRegistry();
 var pipelines = {};
 var candidatesQueue = {};
 var idCounter = 0;
-var sipServer = '107.22.152.22';
+var sipServer = '192.168.148.185';
 
 function nextUniqueId() {
     idCounter++;
@@ -148,7 +148,7 @@ KurentoMediaHandler.prototype = {
         if(user.asteriskSdp.type === 'answer') {
             onSuccess(user.asteriskSdp.value);
         } else if (user.pipeline) {
-            user.pipeline.rtpEndPoint.processOffer(user.asteriskSdp.value).then(onSuccess).catch(onFailure);
+            user.pipeline.rtpEndPoint.processOffer(user.asteriskSdp.value.body).then(onSuccess).catch(onFailure);
         }
     },
 
@@ -159,6 +159,10 @@ KurentoMediaHandler.prototype = {
             value: desc
         }; 
         onSuccess();
+    },
+
+    hasDescription: function () {
+        return true;
     }
 };
 
@@ -217,7 +221,7 @@ CallMediaPipeline.prototype.createPipeline = function(userId, ws, callback) {
                     }
                 }
 
-                webEndPoint.on('OnIceCandidate', function(event) {
+                webEndPoint.on('IceCandidateFound', function(event) {
                     var candidate = kurento.getComplexType('IceCandidate')(event.candidate);
                     userRegistry.getById(userId).ws.send(JSON.stringify({
                         id : 'iceCandidate',
@@ -246,6 +250,7 @@ CallMediaPipeline.prototype.createPipeline = function(userId, ws, callback) {
 }
 
 CallMediaPipeline.prototype.generateSdpAnswer = function(sdpOffer, callback) {
+    console.log("sdpOffer in generateSdpAnswer", sdpOffer);
     this.webRtcEndpoint.processOffer(sdpOffer, callback);
     this.webRtcEndpoint.gatherCandidates(function(error) {
         if (error) {
@@ -376,7 +381,13 @@ function incomingCallResponse(calleeId, callResponse, calleeSdp, ws) {
                 pipeline is created and the RTPEndPoint processes 
                 the SDP offer we got from Asterisk
             *************************************************** */
-            callee.pipeline.rtpEndPoint.processOffer(callee.asteriskSdp.value).then((answer) => {
+           console.log('********************');
+           console.log(callee.asteriskSdp.value)
+           console.log(typeof callee.asteriskSdp.value)
+           console.log(callee.asteriskSdp.value.body)
+           console.log(typeof callee.asteriskSdp.value.body)
+           console.log('********************');
+            callee.pipeline.rtpEndPoint.processOffer(callee.asteriskSdp.value.body).then((answer) => {
                 callee.asteriskSdp = {
                     type: 'answer', 
                     value: answer
@@ -455,6 +466,7 @@ function setupCallSession(user) {
 
     // This would tell a caller that its INVITE was accepted
     user.session.on('accepted', () => {
+        console.log('user.sdpAnswer : ', user.sdpAnswer);
         let message = {
             id: 'callResponse',
             response : 'accepted',
@@ -480,6 +492,7 @@ function call(callerId, to, sdpOffer) {
 
     var caller = userRegistry.getById(callerId);
     caller.callStatus = OUTGOING_CALL;
+    console.log("sdpOffer in call function", sdpOffer);
     caller.sdpOffer = sdpOffer;
 
     function onError(callerReason) {
@@ -536,7 +549,7 @@ function register(id, ext, password, ws, callback) {
         uri: `sip:${ext}@${sipServer}`,
         wsServers: [`ws://${sipServer}:8088/ws`],
         authorizationUser: ext,
-        stunServers: ['stun:107.22.152.22:3478'],
+        // stunServers: ['STUN stun.l.google.com:19302'],
         password,
         mediaHandlerFactory: makeHandlerFactory(ext),
         hackIpInContact: true,
